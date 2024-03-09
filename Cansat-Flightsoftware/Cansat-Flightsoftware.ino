@@ -1,14 +1,16 @@
 #define packetTimePeriod 1000
-#include <TimeLib.h>
+#define SEPARATION_ERR 30
+#define LANDED_ERR 2
 
+String comm = "GARBAGE";
+String packetRecieved = "GARBAGE";
 
 enum states {
-  IDLE ,
-  LAUNCH_WAIT ,
-  ASCENT ,
-  DECENT ,
-  PAYLOAD_SEPARATED ,
-  PARACHUTE_DEPLOYED ,
+  LAUNCH_WAIT,
+  ASCENT,
+  ROCKET_SEPARATION,
+  DECENT,
+  HS_RELEASED,
   LANDED
 };
 enum modes {
@@ -16,14 +18,14 @@ enum modes {
   SIMULATION
 };
 
-int currentState = IDLE ;
+int currentState = LAUNCH_WAIT ;
 int currentMode = FLIGHT ;
 int packet_count = 0;
-bool HS_deployed = false;
-bool PC_deployed = false;
-bool MAST_raised = false;
+int BCN = false;
+bool PARA_DEPLOYED = false;
+bool NOSE_RELEASED = false;
 
-
+bool simFlag = 0;
 float zero_alt_calib = 0;
 bool telemetry = true;
 bool tilt_calibration = false ;
@@ -44,13 +46,16 @@ bool satsValid = false, locValid = false, altValid = false;
 int gpsSecond = 0 , gpsMinute = 0 , gpsHour = 0  , gpsDay = 0 , gpsMonth = 0, gpsYear = 0 ;
 bool timeValid = false , dateValid = false ;
 
-float adjusted_alt= 0 ;
-float adjusted_pressure= 0 ;
+float pitotVelocity = 0;
+float pitotCalibRestValue = 8119.0;  //CombinedDec at rest 
+bool pitotValid = false;
+
+float adjusted_alt = 0 ;
+float adjusted_pressure = 0 ;
 bool pressureValid = false ;
 bool SD_works = false;
 
-#include "actuators.h"
-#include "reset.h"
+#include "servo.h"
 #include "sdcard.h"
 #include "led_buzzer.h"
 #include "./sensors/battery.h"
@@ -62,68 +67,53 @@ bool SD_works = false;
 #include "./sensors/bmpsensor.h"
 #include "xbeeComms.h"
 #include "./sensors/bnosensor.h"
-#include "smartDelay.h"
-#include "camera.h"
+#include "./sensors/pitot_tube.h"
 #include "cmdProcessing.h"
+#include "smartDelay.h"
 
-void setup() {
-  // put your setup code here, to run once:
-  // Go to EEPROM and get values of state, mode, packet_count and zero_alt_calibration
+void setup()
+{
+  led_buzzer_Setup();
+  redON();
   currentState = EEreadInt(1);
   currentMode = EEreadInt(2);
   packet_count = EEreadInt(3);
   zero_alt_calib = EEreadFloat(4);
-  HS_deployed = EEreadInt(5);
-  PC_deployed = EEreadInt(6);
-  MAST_raised = EEreadInt(7);
-  led_buzzer_Setup();
-  setSyncProvider(getTeensy3Time);
-  resetSetup();
+  NOSE_RELEASED = EEreadInt(5);
+  PARA_DEPLOYED = EEreadInt(6);
+  BCN = EEreadInt(7);
+  simFlag = EEreadInt(8);
+  pitotCalibRestValue = EEreadFloat(9);
+  Serial.begin(9600);
   SDsetup();
+  pitotSetup();
   bnoSetup();
   bmpSetup();
   gpsSetup();
   xbeeSetup();
-  cameraSetup();
-  actuatorSetup();
-  RTCsetup();
+  servoSetup();
 
-  buzzerON();
-  greenON();
-  redON();
-  lockProbe();
-  lockPrachute();
-  stopDeployingHeatSheild();
-  stopRaisingFlag();
+  BCN ? buzzerON() : buzzerOFF();
+  NOSE_RELEASED ? deployNoseCone() : lockNoseCone();
+  PARA_DEPLOYED ? deployParachute() : lockPrachute();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  
-  if ( telemetry ){
-    blueON();
+  if (bmpValid && bnoValid && !timeValid && !dateValid && !satsValid && !locValid && !altValid && RTCvalid() && pitotValid)
+  {
+    blink(greenLED, 500);
   }
-  else{
-    blueOFF();
-  }
-
-  if ( bmpValid && bnoValid && timeValid && dateValid && satsValid && locValid && altValid ){
+  else if (bmpValid && bnoValid && timeValid && dateValid && satsValid && locValid && altValid && RTCvalid() && pitotValid)
+  {
     greenON();
   }
-  else{
+  else
+  {
     greenOFF();
   }
 
+
   switch (currentState) {
-    case IDLE:
-      if (tilt_calibration) {
-        int tilt_cal_status = bnoCalibration();
-        sendDataTelemetry(String("Tilt Calibration: ") + String(tilt_cal_status) + String("|"));
-        if ( !tilt_cal_status ) {
-          tilt_calibration = false;
-        }
-      }
-      break;
     case LAUNCH_WAIT:
       // check if cansat has started accending if yes change state
       if ( movingUp() ) {
@@ -132,93 +122,68 @@ void loop() {
       else if ( movingDown() ) {
         currentState = DECENT;
       }
+
       break;
+
     case ASCENT:
       // check if cansat has stopped accent and started going downwards ( decreasing altitude)
-      if ( movingDown() ) {
+      if (notMoving(SEPARATION_ERR) ) {
+        currentState = ROCKET_SEPARATION;
+      }
+      else if (movingDown()) {
         currentState = DECENT;
       }
       break;
+
+    case ROCKET_SEPARATION:
+      if (movingDown()) {
+        currentState = DECENT;
+      }
+      break;
+
     case DECENT:
-      // Check if altitude is less than 500m if yes change state to payload_separated
-      if ( checkAlt(500) ) {
-        currentState = PAYLOAD_SEPARATED;
-        deployProbe();
+      bmpGetValues();
+      if (currentMode == FLIGHT)
+        updateAlt(adjusted_alt);
+
+      // Check if altitude is less than 100m if yes change state to payload_separated
+      if (checkAlt(120)) {
+        deployParachute();
       }
-      break;
-    case PAYLOAD_SEPARATED:
-      //Check if altitude is 200m then change state and relase parachute
-      deployProbe();
-      deployHeatSheild();//probably release this after little height
-      if ( checkAlt(200) ) {
-        currentState = PARACHUTE_DEPLOYED;
-      }
-      break;
-    case PARACHUTE_DEPLOYED:
-      deployProbe();
-      deployHeatSheild();//probably release this after little height
       
-      //deploy parachute function
-      deployParachute();
-      //If there is no movement then move to landed state
-      if ( notMoving() ) {
+      if ( checkAlt(100) ) {
+        currentState = HS_RELEASED;
+        PARA_DEPLOYED = true ;
+        deployParachute();
+        deployNoseCone();
+        WriteALL();
+      }
+      break;
+
+    case HS_RELEASED:
+      if (notMoving(LANDED_ERR)) {
         currentState = LANDED;
       }
       break;
+
     case LANDED:
-      // Open flag and just wait do nothing
-      raiseFlag();
-      // Turn off heatsheild motor
-      stopDeployingHeatSheild();
+      buzzerON();
       break;
+
     default:
       break;
-
-
   }
 
-  WriteALL();
-  smartDelay(1000 -183 );
-  repetitive_Task();
-}
-
-
-void repetitive_Task( ) {
-  packet_count ++;
-
-  // Read Sensor Data
-  //GPS data
-  gpsGetTime( &gpsSecond , &gpsMinute, &gpsHour , &gpsDay, &gpsMonth , &gpsYear , &dateValid , &timeValid);
-  gpsReading(&noSats , &lat , &lng , &gpsAltitude , &satsValid, &locValid  , &altValid );
-  //BNO data
-  bnoGetValues();
-  readVoltage();
-  //BMP data
-  bmpGetValues();
-
-  // Apply filter
-
-
-  //Process recieved commmands
-  //get packet
-  if ( packetAvailable() ) {
-    String packetRecieved = getOnePacket();
+  if (Serial.available()) {
+    comm = Serial.readString();
+    packetCheck(comm);
+    comm = "GARBAGE_VALUE";
+  }
+  
+    recieveDataTelemetry();
     packetCheck(packetRecieved);
-  }
-
-  updateAlt(adjusted_alt);
-  //Make telemetry packet
-  String telemetry_string = makeTelemetryPacket();
-
-  //Transmit data to GCS over Xbee
-  if ( telemetry ){
-    sendDataTelemetry(telemetry_string);
-  }
-
-  //Save Data to sd card  
-  saveTelemetryInSdCard(telemetry_string);
-
-  // Save state to EEPROM
-  WriteALL();
-
+    packetRecieved = "GARBAGE_VALUE";
+ 
+  
+  smartDelay();
 }

@@ -1,4 +1,4 @@
-#define battPin 38
+#define battPin 41
 #define r1 340
 #define r2 98
 
@@ -6,11 +6,11 @@
 
 void battSetup()
 {
-  pinMode(battPin, INPUT);
+  pinMode(battPin, INPUT_DISABLE);
 }
 
 void readVoltage()
 {
   float vJun = analogRead(battPin)*3.3/1023; 
-  voltage = vJun*7.27;
+  voltage = vJun*2.6;
 }

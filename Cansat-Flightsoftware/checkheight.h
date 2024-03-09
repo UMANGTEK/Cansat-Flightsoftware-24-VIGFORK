@@ -1,6 +1,6 @@
-#define MOVINGAVG 5
-#define ERR_DIFF 1
-#define FRACTION 0.6
+ #define MOVINGAVG 5
+#define ALT_DIFF 2  //Minimum difference between two altitude values to consider CanSat moving
+#define FRACTION 0.6    //If MOVINGAVG is 10 and FRACTION is set to 0.7, the function will return true if at least 70% (7 out of 10) of the altitude values are inc or dec.
 float arr[MOVINGAVG]={0,0,0,0,0}; // add more zeros here if u are increasing MOVINGAVG
 /*
 void updateAlt(float alt  )
@@ -30,6 +30,7 @@ void updateAlt(float alt  )
   }
   arr[MOVINGAVG-1] = alt;
 }
+
 float getFiltered(){
   return(y);
 }
@@ -43,14 +44,15 @@ bool checkAlt(float lessthanAlti) {
     return true;
   }
 }
+
 bool movingUp(){
   int j = 0;
   for(int i=1;i<MOVINGAVG ;i++){
-    if ( arr[i] > arr[i-1] ){
+    if ( (arr[i] > arr[i-1]) && ((arr[i] - arr[i-1]) > ALT_DIFF)){
       j++;
     }
   }
-  if ( j > FRACTION * MOVINGAVG ){
+  if ( j >= FRACTION * MOVINGAVG ){
     return true;
   }
   else {
@@ -61,11 +63,11 @@ bool movingUp(){
 bool movingDown(){
   int j = 0;
   for(int i=1;i<MOVINGAVG ;i++){
-    if ( arr[i] < arr[i-1] ){
+    if ( arr[i] < arr[i-1] && ((arr[i-1] - arr[i]) > ALT_DIFF)){
       j++;
     }
   }
-  if ( j > FRACTION*MOVINGAVG ){
+  if ( j >= FRACTION*MOVINGAVG ){
     return true;
   }
   else {
@@ -73,7 +75,7 @@ bool movingDown(){
   }
 }
 
-bool notMoving (){
+bool notMoving(float ERR_DIFF){
   int j = 0;
   float filtered_alt = getFiltered();
   for(int i=0;i<MOVINGAVG ;i++){
@@ -81,7 +83,7 @@ bool notMoving (){
       j++;
     }
   }
-  if ( j == MOVINGAVG-1 ){
+  if ( j == FRACTION*MOVINGAVG ){
     return true;
   }
   else {

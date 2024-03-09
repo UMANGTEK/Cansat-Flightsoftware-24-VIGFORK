@@ -1,51 +1,66 @@
+unsigned long previousMillis = 0;    // Stores the last time the task was executed
 
-// This custom version of delay() ensures that the gps object
-// is being "fed".
-static void smartDelay(unsigned long ms)
-{
-  unsigned long start = millis();
-  do 
-  {
-      if ( !bnoValid ){
-        bno.begin();
-        bnoValid = true;
-     }
-      if(!bmpValid){
-        bmpSetup();
-      }
-      recieveDataTelemetry(); 
-      processGps();
-      if ( currentMode == FLIGHT ){
-        bmpGetValues();
-        updateAlt(adjusted_alt);
-      }
-      if (resetShort()){
-        lockProbe();
-        lockPrachute();
-        stopDeployingHeatSheild();
-        stopRaisingFlag();
 
-        currentState = IDLE ;
-        currentMode = FLIGHT ;
-        packet_count = 0;
-        HS_deployed = false;
-        PC_deployed = false;
-        MAST_raised = false;
-        zero_alt_calib = 0;
-        
-        WriteALL();
-        
-        telemetry = true;
-        tilt_calibration = false ;
-        simulation_enabled = false;
+void periodic_Task() {
+   packet_count++;
 
-      }
-      /*
-      if( !SD_works && currentState == IDLE ){
-        SDsetup();
-        SD_works = true ;
-      }
-      */
-  } while (millis() - start < ms );
+  // Read Sensor Data
+  //GPS data
+  gpsGetTime( &gpsSecond , &gpsMinute, &gpsHour , &gpsDay, &gpsMonth , &gpsYear , &dateValid , &timeValid);
+  gpsReading(&noSats , &lat , &lng , &gpsAltitude , &satsValid, &locValid  , &altValid );
+  
+  //BNO data
+  bnoGetValues();
+  
+  //Voltage
+  readVoltage();
+  
+  //BMP data
+  bmpGetValues();
 
+  //Pitot Data
+  getPitotSpeed();
+  
+  //Process recieved commmands
+  //get packet
+//  if ( packetAvailable() ) {
+//    String packetRecieved = getOnePacket();
+//    packetCheck(packetRecieved);
+//  }
+
+  if(currentMode == FLIGHT)
+    updateAlt(adjusted_alt);
+    
+  //Make telemetry packet
+  String telemetry_string = makeTelemetryPacket();
+
+  //Transmit data to GCS over Xbee
+  if ( telemetry ){
+    sendDataTelemetry(telemetry_string);
+    //Serial.println(telemetry_string);
+  }
+
+  //Save Data to sd card  
+  saveTelemetryInSdCard(telemetry_string);
+
+  // Save state to EEPROM
+  WriteALL();
+  
+  if(!bnoValid)
+    checkBno();
+  
+}
+
+//SmartDelay for telemetry packet of 1 second
+void smartDelay() {
+  unsigned long currentMillis = millis();  // Get the current time
+  
+  // Check if it's time to perform the task
+  if (currentMillis - previousMillis >= packetTimePeriod) {
+    // Update the last execution time
+    previousMillis = currentMillis;
+    
+    // Perform the task
+    periodic_Task();
+  }
 }

@@ -4,7 +4,7 @@
 #include <utility/imumaths.h>
 #include <math.h>
 
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x29);
 sensors_event_t event;
 
 void bnoSetup(){
@@ -48,6 +48,19 @@ void bnoGetValues(){
   xAngle = tx;
   yAngle = ty;
   zAngle = tz;
+}
+
+void checkBno()
+{
+  static int count = 1;
+
+  if (count == 3)
+  {
+    count = 1;
+    bnoSetup();
+    return;
+  }
+  count++;
 }
 
 void bnoGetXAcc(float *xAcc)

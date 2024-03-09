@@ -1,4 +1,5 @@
-String addZeroSuffix(String st, int n)
+
+String addZeroSuffix(String st, int n)      //Add n 0 to end of string
 {
   for(int i=0;i<n;i++)
     st = st + "0";
@@ -6,7 +7,7 @@ String addZeroSuffix(String st, int n)
   return st;
 }
 
-String addZeroToPrefix(String st, int n)
+String addZeroToPrefix(String st, int n)    //Add n 0 to strat of string
 {
   for(int i=1;i<=n;i++)
     st = "0" + st;
@@ -14,47 +15,50 @@ String addZeroToPrefix(String st, int n)
   return st;
 }
 
-String printFloat(double str, int len, int lenAfterDecimal, bool valid)
-{
-  String finalStri="";
-  bool neg = false;
-  if (valid)
+String printFloat(float val, int totalLength, int decimalPlaces, bool valid) {
+  String stringValue;
+  if(valid == true)
   {
-    if ( str < 0  ){
-      neg = true;
-      str *= -1;
-      len--;
+    // Convert float to string with desired number of decimal places
+    stringValue = String(val, decimalPlaces);
+  
+    // Find the position of the decimal point
+    int decimalIndex = stringValue.indexOf('.');
+  
+    // If no decimal point found, add one at the end
+   if (decimalIndex == -1) {
+      stringValue += ".";
+      decimalIndex = stringValue.length() - 1;
     }
-    String s = String(str,len);
-    int indexOfPt = s.indexOf(".");
-    if((len)-(indexOfPt+1) >= lenAfterDecimal)
-      finalStri = s.substring(0, (indexOfPt+1+lenAfterDecimal));
-    else
-    {
-      int zeroToSuffix = lenAfterDecimal - (len - (indexOfPt+1));
-      finalStri = addZeroSuffix(s, zeroToSuffix);
+  
+    // Calculate the number of zeros to add before the decimal point
+    int zerosBefore = totalLength - stringValue.length();
+  
+    // Add zeros before and after the decimal point as required
+    for (int i = 0; i < zerosBefore; ++i) {
+     stringValue = "0" + stringValue;
     }
-    int lenBeforeDecimal = len - (lenAfterDecimal + 1);
-
-    if(lenBeforeDecimal >= indexOfPt)
-    {
-      int zeroToPrefix = lenBeforeDecimal - indexOfPt;
-      finalStri = addZeroToPrefix(finalStri, zeroToPrefix);
+  
+    // Calculate the number of zeros to add after the decimal point
+    int zerosAfter = decimalPlaces - (stringValue.length() - decimalIndex - 1);
+  
+    // Add zeros after the decimal point as required
+    for (int i = 0; i < zerosAfter; ++i) {
+      stringValue += "0";
     }
-    if ( neg ){
-      finalStri = "-" + finalStri;
-    }
-    return finalStri;
   }
   else
   {
-    for (int i=0; i<len; i++)
-      finalStri+="*";
+     for (int i=0; i<totalLength; i++)
+      stringValue+="*";
   }
-  return finalStri;
+
+  
+  return stringValue;
 }
 
- String printInt(unsigned long val, int len, bool valid)
+
+ String printInt(unsigned long val, int len, bool valid)    //Converts integer to string of appropriate length given sensor data is valid
 {
   String finalStr="";
   if (valid)
@@ -75,18 +79,20 @@ String printFloat(double str, int len, int lenAfterDecimal, bool valid)
 
 
 
-String printStr(const char *str, int len, bool valid)
+String printStr(String str, int len, bool valid)
 {
-
+    int a =0;
     String stri="";
     if (valid)
     {
-      int slen = strlen(str);
+      int slen = str.length();
       for (int i=0; i<len; ++i)
-          if (i<slen)
-              stri+=str[i];
-          else
+          if (i<(len-slen))
               stri+=" ";
+          else
+          {
+             stri+=str[a++];
+          }
     }
     else
     {
@@ -94,7 +100,6 @@ String printStr(const char *str, int len, bool valid)
         stri+="*";
     }
     return stri;
-
 }
 
 String printDate(int day, int month, int year, bool valid)
@@ -155,6 +160,7 @@ String printTime(int hour, int minute, int second, bool valid)
     }
     else
     {
+        greenOFF();
         tim="********" ;  
     }
     return tim;
